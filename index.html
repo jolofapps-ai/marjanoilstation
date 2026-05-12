@@ -956,6 +956,11 @@ async function sbApiUpsertStationSale(p){
     var {data:sec}=await _sb.from('config_security').select('value').eq('key','sales_password').maybeSingle();
     if(sec&&sec.value&&sec.value!==salesPwd)return{ok:false,message:'Mot de passe incorrect'};
   }
+  /* vérifier les doublons pour les nouveaux enregistrements (non-admin uniquement) */
+  if(!obj.id && !isAd()){
+    var {data:dupVen}=await _sb.from('ventes').select('id').eq('station',st).eq('date',obj.date).eq('produit',obj.produit).maybeSingle();
+    if(dupVen)return{ok:false,message:'⚠️ Une vente pour le produit "'+obj.produit+'" à la date '+obj.date+' existe déjà. Impossible de saisir un doublon.'};
+  }
   var qte=parseFloat(obj.index_arrivee||0)-parseFloat(obj.index_depart||0);
   var mt=qte*parseFloat(obj.prix_unitaire||0);
   var row={station:st,date:obj.date,produit:obj.produit,prix_unitaire:obj.prix_unitaire,index_arrivee:obj.index_arrivee,index_depart:obj.index_depart,quantite_litres:qte,montant_total:mt,observations:obj.observations||null};
@@ -1058,6 +1063,12 @@ async function sbApiDeleteDepense(p){
 /* --- Conso CRUD --- */
 async function sbApiAddConso(p){
   var obj=p.obj;
+  /* vérifier les doublons pour les nouveaux enregistrements (non-admin uniquement) */
+  if(!isAd()){
+    var stCon=obj.station||S.cs;
+    var {data:dupCon}=await _sb.from('rapport_consommation').select('id').eq('station',stCon).eq('date',obj.date).eq('produit',obj.produit).maybeSingle();
+    if(dupCon)return{ok:false,message:'⚠️ Un relevé jauge pour le produit "'+obj.produit+'" à la date '+obj.date+' existe déjà. Impossible de saisir un doublon.'};
+  }
   var jo=parseFloat(obj.jauge_ouverture||0),jf=parseFloat(obj.jauge_fermeture||0);
   var row={station:obj.station||S.cs,date:obj.date,produit:obj.produit,jauge_ouverture:jo,jauge_fermeture:jf,sortie:jo-jf,observations:obj.observations||null};
   var res=await _sb.from('rapport_consommation').insert(row);
@@ -1776,6 +1787,11 @@ function saveSale(){
   if(ia<=0&&id2<=0)return toast('Index requis','error');
   var qte=ia-id2;
   if(qte<=0)return toast('Index d\'arrivée doit être > Index de départ','error');
+  /* vérification doublon côté client (non-admin, nouvelle vente uniquement) */
+  if(!id && !isAd()){
+    var dupVenCli=(S.sc||[]).some(function(v){return v.date===dt&&v.produit===pr;});
+    if(dupVenCli)return toast('⚠️ Une vente pour "'+pr+'" à la date '+dt+' existe déjà. Doublon interdit.','error');
+  }
   var obj={id:id||0,date:dt,produit:pr,prix_unitaire:px,index_arrivee:ia,index_depart:id2,quantite_litres:qte,observations:ob};
   _saving=true;var sb=$('btn-save-sale');if(sb){sb.disabled=true;sb.innerHTML='<i class="fas fa-circle-notch fa-spin"></i>';}
   api('apiUpsertStationSale',{token:S.tk,stationName:S.cs,obj:obj,salesPassword:S._lsp||null})
@@ -1856,6 +1872,12 @@ function saveCon(){
   var obj={date:$('mc-dt').value,produit:$('mc-pr').value,jauge_ouverture:$('mc-jo').value,jauge_fermeture:$('mc-jf').value,station:S.cs,observations:$('mc-ob').value,orig_date:$('mc-orig-dt').value,orig_produit:$('mc-orig-pr').value,_rowLine:+($('mc-row-line').value||0)};
   if(!obj.produit)return toast('Produit requis','error');
   if(!obj.date)return toast('Date requise','error');
+  /* vérification doublon côté client (non-admin, nouveau relevé uniquement) */
+  if(!isEdit && !isAd()){
+    var conData=(S.fd&&S.fd.conso)||[];
+    var dupConCli=conData.some(function(c){return c.date===obj.date&&c.produit===obj.produit;});
+    if(dupConCli)return toast('⚠️ Un relevé jauge pour "'+obj.produit+'" à la date '+obj.date+' existe déjà. Doublon interdit.','error');
+  }
   _saving=true;var sb=$('btn-save-con');if(sb){sb.disabled=true;sb.innerHTML='<i class="fas fa-circle-notch fa-spin"></i>';}
   api(isEdit?'apiUpdateConso':'apiAddConso',{token:S.tk,obj:obj})
     .then(function(r){if(r.ok){clM('m-con');toast(r.message||'OK','success');if(r.notify)_pushNotif(r.notify.type,r.notify.station,r.notify.detail);_sfBusy=false;loadSF();}else toast(r.message||'Erreur','error');})
