@@ -945,18 +945,11 @@ async function sbApiGetStationFull(p){
   var livByPr={},venByPr={};
   livraisons.forEach(function(r){livByPr[r.produit]=(livByPr[r.produit]||0)+(r.quantite_litres||0);});
   sales.forEach(function(r){venByPr[r.produit]=(venByPr[r.produit]||0)+(r.quantite_litres||0);});
-  /* lastReadings calculé AVANT stock pour pouvoir l'utiliser dans la formule */
+  /* lastReadings */
   var lastReadings={};
   (conRes.data||[]).forEach(function(r){if(!lastReadings[r.produit]||r.date>lastReadings[r.produit].date)lastReadings[r.produit]={date:r.date,jauge_fermeture:r.jauge_fermeture||0};});
-  /* Stock réel = dernier relevé jauge (jauge_fermeture) si disponible, sinon livraisons - ventes (min 0) */
-  var stock=produits.map(function(p){
-    var lL=livByPr[p.produit]||0,vL=venByPr[p.produit]||0,lr=lastReadings[p.produit];
-    var hasJauge=lr&&lr.jauge_fermeture>0;
-    var calcVal=lL-vL;
-    var sl=hasJauge?lr.jauge_fermeture:Math.max(0,calcVal);
-    var anomalie=!hasJauge&&calcVal<0;/* ventes > livraisons sans jauge = donnée incohérente */
-    return{produit:p.produit,livraisons_litres:lL,ventes_litres:vL,stock_litres:sl,stock_source:hasJauge?'jauge':'calcul',anomalie:anomalie};
-  }).filter(function(p){return p.livraisons_litres>0||p.ventes_litres>0;});
+  /* Stock = Total Livraisons - Ventes */
+  var stock=produits.map(function(p){var lL=livByPr[p.produit]||0,vL=venByPr[p.produit]||0;return{produit:p.produit,livraisons_litres:lL,ventes_litres:vL,stock_litres:lL-vL};}).filter(function(p){return p.livraisons_litres>0||p.ventes_litres>0;});
   return{ok:true,sales:sales,livraisons:livraisons,versements:versements,depenses:depenses,conso:conso,stock:stock,lastReadings:lastReadings,produits:produits,stationPrix:stationPrix,categories:categories,resume:{total_livraisons:totalLiv,total_versements:totalVer,total_depenses:totalDep,total_ventes:totalVen,montant_restant:montantRestant},permissions:S.pm};
 }
 
@@ -1659,19 +1652,7 @@ function rRes(res,stockVal){
 function rStk(stock){
   var rows=[],tL=0,tV=0,tS=0,tM=0,pxMap={};
   var px=(S.sp&&S.sp.length)?S.sp:S.pr;px.forEach(function(p){pxMap[p.produit]=p.prix_unitaire;});
-  (stock||[]).forEach(function(p){var sl=p.stock_litres||0,pu=pxMap[p.produit]||0,ms=sl*pu;tL+=(p.livraisons_litres||0);tV+=(p.ventes_litres||0);tS+=sl;tM+=ms;
-    var src=p.stock_source==='jauge'
-      ?'<span title="Stock issu du dernier relevé jauge" style="font-size:10px;background:var(--accg);color:var(--acc);border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700">jauge</span>'
-      :'<span title="Stock calculé: livraisons − ventes" style="font-size:10px;background:#f1f5f9;color:#64748b;border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700">calc</span>';
-    var warn=p.anomalie?'<span title="Ventes supérieures aux livraisons — relevé jauge requis pour stock réel" style="font-size:10px;background:rgba(239,68,68,.12);color:var(--err);border-radius:4px;padding:1px 5px;margin-left:4px;font-weight:700">⚠ données</span>':'';
-    var venCls=(p.ventes_litres||0)>(p.livraisons_litres||0)?'td':'';
-    rows.push('<tr'+(p.anomalie?' style="background:rgba(239,68,68,.04)"':'')+'>'+
-      '<td class="fw6">'+escH(p.produit)+'</td>'+
-      '<td class="tr">'+fm(p.livraisons_litres||0)+'</td>'+
-      '<td class="tr '+venCls+'">'+fm(p.ventes_litres||0)+'</td>'+
-      '<td class="tr '+(sl>0?'ts':'')+'">'+fm(sl)+src+warn+'</td>'+
-      '<td class="tr fw7 ta">'+fmF(ms)+'</td></tr>');
-  });
+  (stock||[]).forEach(function(p){var sl=p.stock_litres||0,pu=pxMap[p.produit]||0,ms=sl*pu;tL+=(p.livraisons_litres||0);tV+=(p.ventes_litres||0);tS+=sl;tM+=ms;rows.push('<tr><td class="fw6">'+escH(p.produit)+'</td><td class="tr">'+fm(p.livraisons_litres||0)+'</td><td class="tr">'+fm(p.ventes_litres||0)+'</td><td class="tr '+(sl>0?'ts':sl<0?'td':'')+'">'+fm(sl)+'</td><td class="tr fw7 ta">'+fmF(ms)+'</td></tr>');});
   if(rows.length)rows.push('<tr style="font-weight:800;background:var(--accg);border-top:2px solid var(--accb)"><td>TOTAL</td><td class="tr">'+fm(tL)+'</td><td class="tr">'+fm(tV)+'</td><td class="tr">'+fm(tS)+'</td><td class="tr ta">'+fmF(tM)+'</td></tr>');
   $('stk-tbl').innerHTML=rows.length?rows.join(''):'<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--t3)">Aucune donnée</td></tr>';
 }
