@@ -958,8 +958,8 @@ async function sbApiUpsertStationSale(p){
   }
   /* vérifier les doublons pour les nouveaux enregistrements (non-admin uniquement) */
   if(!obj.id && !isAd()){
-    var {data:dupVen}=await _sb.from('ventes').select('id').eq('station',st).eq('date',obj.date).eq('produit',obj.produit).maybeSingle();
-    if(dupVen)return{ok:false,message:'⚠️ Une vente pour le produit "'+obj.produit+'" à la date '+obj.date+' existe déjà. Impossible de saisir un doublon.'};
+    var {data:dupVenRows,error:dupVenErr}=await _sb.from('ventes').select('id').eq('station',st).eq('date',obj.date).eq('produit',obj.produit).limit(1);
+    if(!dupVenErr && dupVenRows && dupVenRows.length>0)return{ok:false,message:'⚠️ Une vente pour le produit "'+obj.produit+'" à la date '+obj.date+' existe déjà. Doublon interdit (seul l\'admin peut saisir plusieurs ventes sur le même produit/date).'};
   }
   var qte=parseFloat(obj.index_arrivee||0)-parseFloat(obj.index_depart||0);
   var mt=qte*parseFloat(obj.prix_unitaire||0);
@@ -1066,8 +1066,8 @@ async function sbApiAddConso(p){
   /* vérifier les doublons pour les nouveaux enregistrements (non-admin uniquement) */
   if(!isAd()){
     var stCon=obj.station||S.cs;
-    var {data:dupCon}=await _sb.from('rapport_consommation').select('id').eq('station',stCon).eq('date',obj.date).eq('produit',obj.produit).maybeSingle();
-    if(dupCon)return{ok:false,message:'⚠️ Un relevé jauge pour le produit "'+obj.produit+'" à la date '+obj.date+' existe déjà. Impossible de saisir un doublon.'};
+    var {data:dupConRows,error:dupConErr}=await _sb.from('rapport_consommation').select('id').eq('station',stCon).eq('date',obj.date).eq('produit',obj.produit).limit(1);
+    if(!dupConErr && dupConRows && dupConRows.length>0)return{ok:false,message:'⚠️ Un relevé jauge pour le produit "'+obj.produit+'" à la date '+obj.date+' existe déjà. Doublon interdit (seul l\'admin peut saisir plusieurs relevés sur le même produit/date).'};
   }
   var jo=parseFloat(obj.jauge_ouverture||0),jf=parseFloat(obj.jauge_fermeture||0);
   var row={station:obj.station||S.cs,date:obj.date,produit:obj.produit,jauge_ouverture:jo,jauge_fermeture:jf,sortie:jo-jf,observations:obj.observations||null};
