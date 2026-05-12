@@ -256,6 +256,7 @@ tbody tr.row-upd{animation:rowFlash 1.4s ease}
 .btn-refresh-dash{background:linear-gradient(135deg,var(--acc),var(--acc3));color:#000;font-weight:700;min-width:120px}
 .btn-refresh-dash:hover{filter:brightness(1.12);box-shadow:0 4px 16px rgba(245,158,11,.4)}
 .autofill-hint{font-size:10px;color:var(--ok);margin-top:3px;display:flex;align-items:center;gap:4px}
+.dup-warn{display:none;background:var(--errg);border:1px solid rgba(239,68,68,.3);border-radius:var(--r);padding:10px 14px;font-size:12px;font-weight:600;color:var(--err);margin-bottom:14px;align-items:center;gap:9px;animation:fadeUp .2s ease}.dup-warn.sh{display:flex}.dup-warn i{font-size:14px;flex-shrink:0}
 .dash-total-row td{font-weight:800;background:var(--accg);border-top:2px solid var(--accb);color:var(--t1)!important}
 @media(max-width:900px){:root{--sidebar:220px}.mc{padding:18px}.cg{grid-template-columns:1fr}.psg{grid-template-columns:1fr}.md{max-width:96vw}}
 @media(max-width:700px){
@@ -573,6 +574,7 @@ tbody tr.row-upd{animation:rowFlash 1.4s ease}
       <input type="hidden" id="ms-sale-id">
       <div class="fg"><label>Date</label><input id="ms-dt" class="fp" type="date"></div>
       <div class="fg"><label>Produit</label><select id="ms-pr" class="fp"></select></div>
+      <div class="dup-warn" id="dup-ven-warn"><i class="fas fa-exclamation-triangle"></i><span>Une vente pour ce produit à cette date existe déjà. Seul l'admin peut modifier.</span></div>
       <div class="fg"><label>Prix unitaire (F/L)</label><input id="ms-px" class="fp" type="number" step="1" min="0" placeholder="Ex: 830"></div>
       <div style="background:var(--accg);border:1px solid var(--accb);border-radius:var(--r);padding:14px;margin-bottom:15px">
         <div style="font-size:11px;font-weight:700;color:var(--acc);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px"><i class="fas fa-tachometer-alt"></i> Ventes Compteur / Index</div>
@@ -596,6 +598,7 @@ tbody tr.row-upd{animation:rowFlash 1.4s ease}
       <input type="hidden" id="ml-id">
       <div class="fg"><label>Date</label><input id="ml-dt" class="fp" type="date"></div>
       <div class="fg"><label>Produit</label><select id="ml-pr" class="fp"></select></div>
+      <div class="dup-warn" id="dup-liv-warn"><i class="fas fa-exclamation-triangle"></i><span>Une livraison pour ce produit à cette date existe déjà. Seul l'admin peut modifier.</span></div>
       <div class="fg"><label>Quantité (L)</label><div class="iw"><i class="fas fa-oil-can"></i><input id="ml-qt" class="fc" type="number" step="0.01" min="0" placeholder="0"></div></div>
       <div class="fg"><label>Prix unitaire (F/L)</label><div class="iw"><i class="fas fa-tag"></i><input id="ml-px" class="fc" type="number" step="1" min="0" placeholder="0"></div></div>
       <div class="fg"><label>Observations</label><input id="ml-ob" class="fp" type="text" placeholder="Optionnel…"></div>
@@ -609,6 +612,7 @@ tbody tr.row-upd{animation:rowFlash 1.4s ease}
     <div class="mb">
       <input type="hidden" id="mv-id">
       <div class="fg"><label>Date</label><input id="mv-dt" class="fp" type="date"></div>
+      <div class="dup-warn" id="dup-ver-warn"><i class="fas fa-exclamation-triangle"></i><span>Un versement à cette date existe déjà. Seul l'admin peut en ajouter un autre.</span></div>
       <div class="fg"><label>Montant (F)</label><div class="iw"><i class="fas fa-coins"></i><input id="mv-mt" class="fc" type="number" step="1" min="0" placeholder="0"></div></div>
       <div class="fg"><label>Mode de versement</label><select id="mv-md" class="fp"><option value="Espèce">Espèce</option><option value="Virement">Virement</option><option value="Chèque">Chèque</option><option value="Orange Money">Orange Money</option><option value="Wave">Wave</option></select></div>
       <div class="fg"><label>Référence</label><input id="mv-rf" class="fp" type="text" placeholder="Optionnel…"></div>
@@ -635,6 +639,7 @@ tbody tr.row-upd{animation:rowFlash 1.4s ease}
     <div class="mb">
       <div class="fg"><label>Date</label><input id="mc-dt" class="fp" type="date"></div>
       <div class="fg"><label>Produit</label><select id="mc-pr" class="fp"></select></div>
+      <div class="dup-warn" id="dup-con-warn"><i class="fas fa-exclamation-triangle"></i><span>Un relevé jauge pour ce produit à cette date existe déjà. Seul l'admin peut modifier.</span></div>
       <div class="fg">
         <label>Jauge ouverture</label>
         <div class="iw"><i class="fas fa-tachometer-alt"></i><input id="mc-jo" class="fc" type="number" step="0.01" min="0" placeholder="0"></div>
@@ -985,6 +990,12 @@ async function sbApiDeleteStationSale(p){
 /* --- Livraisons CRUD --- */
 async function sbApiAddLivraison(p){
   var obj=p.obj;
+  /* vérifier les doublons livraison (non-admin uniquement) */
+  if(!isAd()){
+    var stLiv=obj.station||S.cs;
+    var {data:dupLivRows,error:dupLivErr}=await _sb.from('livraisons').select('id').eq('station',stLiv).eq('date',obj.date).eq('produit',obj.produit).limit(1);
+    if(!dupLivErr && dupLivRows && dupLivRows.length>0)return{ok:false,message:'⚠️ Une livraison pour le produit "'+obj.produit+'" à la date '+obj.date+' existe déjà. Doublon interdit (seul l\'admin peut saisir plusieurs livraisons sur le même produit/date).'};
+  }
   var qt=parseFloat(obj.quantite_litres||0),px=parseFloat(obj.prix_unitaire||0);
   var row={station:obj.station||S.cs,date:obj.date,produit:obj.produit,quantite_litres:qt,prix_unitaire:px,montant_total:qt*px,observations:obj.observations||null,saisi_par:S.u?S.u.nom_complet||S.u.username:''};
   var res=await _sb.from('livraisons').insert(row);
@@ -1019,6 +1030,12 @@ async function sbApiDeleteLivraison(p){
 /* --- Versements CRUD --- */
 async function sbApiAddVersement(p){
   var obj=p.obj;
+  /* vérifier les doublons versement (non-admin uniquement) */
+  if(!isAd()){
+    var stVer=obj.station||S.cs;
+    var {data:dupVerRows,error:dupVerErr}=await _sb.from('versements').select('id').eq('station',stVer).eq('date',obj.date).limit(1);
+    if(!dupVerErr && dupVerRows && dupVerRows.length>0)return{ok:false,message:'⚠️ Un versement à la date '+obj.date+' existe déjà. Doublon interdit (seul l\'admin peut saisir plusieurs versements à la même date).'};
+  }
   var row={station:obj.station||S.cs,date:obj.date,montant_verse:parseFloat(obj.montant_verse||0),mode_versement:obj.mode_versement||'Espèce',reference:obj.reference||null,saisi_par:S.u?S.u.nom_complet||S.u.username:''};
   var res=await _sb.from('versements').insert(row);
   if(res.error)return{ok:false,message:res.error.message};
@@ -1350,8 +1367,13 @@ function bindEvents(){
       }
     }else{if(hint)hint.style.display='none';}
   });
-  $('ml-pr').addEventListener('change',function(){var o=this.options[this.selectedIndex];if(o&&o.dataset.px)$('ml-px').value=o.dataset.px;});
-  $('ms-pr').addEventListener('change',function(){var o=this.options[this.selectedIndex];if(o&&o.dataset.px)$('ms-px').value=o.dataset.px;calcSale();});
+  $('ml-pr').addEventListener('change',function(){var o=this.options[this.selectedIndex];if(o&&o.dataset.px)$('ml-px').value=o.dataset.px;checkDupLiv();});
+  $('ml-dt').addEventListener('change',checkDupLiv);
+  $('ms-pr').addEventListener('change',function(){var o=this.options[this.selectedIndex];if(o&&o.dataset.px)$('ms-px').value=o.dataset.px;calcSale();checkDupVen();});
+  $('ms-dt').addEventListener('change',checkDupVen);
+  $('mv-dt').addEventListener('change',checkDupVer);
+  $('mc-pr').addEventListener('change',checkDupCon);
+  $('mc-dt').addEventListener('change',checkDupCon);
   $('ms-px').addEventListener('input',calcSale);
   $('m-usr-r').addEventListener('change',function(){var isSGv=(this.value==='super_gerant');$('fg-station-single').style.display=isSGv?'none':'block';$('fg-station-multi').style.display=isSGv?'block':'none';if(isSGv)buildMultiStationGrid();});
   }catch(err){console.error('bindEvents error',err);toast('Erreur bindEvents: '+err.message,'error');}
@@ -1363,6 +1385,32 @@ function calcSale(){
   else{row.style.display='none';}
 }
 window.calcSale=calcSale;
+function checkDupVen(){
+  var id=+($('ms-sale-id').value||0),dt=$('ms-dt').value,pr=$('ms-pr').value,w=$('dup-ven-warn');
+  if(!w)return;
+  if(isAd()||id){w.classList.remove('sh');return;}
+  w.classList.toggle('sh',!!(dt&&pr&&(S.sc||[]).some(function(v){return v.date===dt&&v.produit===pr;})));
+}
+function checkDupLiv(){
+  var id=+($('ml-id').value||0),dt=$('ml-dt').value,pr=$('ml-pr').value,w=$('dup-liv-warn');
+  if(!w)return;
+  if(isAd()||id){w.classList.remove('sh');return;}
+  w.classList.toggle('sh',!!(dt&&pr&&(S.lc||[]).some(function(v){return v.date===dt&&v.produit===pr;})));
+}
+function checkDupVer(){
+  var id=+($('mv-id').value||0),dt=$('mv-dt').value,w=$('dup-ver-warn');
+  if(!w)return;
+  if(isAd()||id){w.classList.remove('sh');return;}
+  w.classList.toggle('sh',!!(dt&&(S.vc||[]).some(function(v){return v.date===dt;})));
+}
+function checkDupCon(){
+  var isEdit=!!($('mc-orig-dt')&&$('mc-orig-dt').value),dt=$('mc-dt').value,pr=$('mc-pr').value,w=$('dup-con-warn');
+  if(!w)return;
+  if(isAd()||isEdit){w.classList.remove('sh');return;}
+  var conData=(S.fd&&S.fd.conso)||[];
+  w.classList.toggle('sh',!!(dt&&pr&&conData.some(function(c){return c.date===dt&&c.produit===pr;})));
+}
+window.checkDupVen=checkDupVen;window.checkDupLiv=checkDupLiv;window.checkDupVer=checkDupVer;window.checkDupCon=checkDupCon;
 function buildMultiStationGrid(selected){
   var sel=(selected||'').split(',').map(function(s){return s.trim();});
   var frag=document.createDocumentFragment();
@@ -1816,6 +1864,11 @@ function saveLiv(){
   var id=+($('ml-id').value||0);
   var obj={date:$('ml-dt').value,produit:$('ml-pr').value,quantite_litres:$('ml-qt').value,prix_unitaire:$('ml-px').value,observations:$('ml-ob').value,station:S.cs};
   if(!obj.produit)return toast('Produit requis','error');
+  /* vérification doublon livraison côté client (non-admin, nouvelle livraison uniquement) */
+  if(!id && !isAd()){
+    var dupLivCli=(S.lc||[]).some(function(v){return v.date===obj.date&&v.produit===obj.produit;});
+    if(dupLivCli)return toast('⚠️ Une livraison pour "'+obj.produit+'" à la date '+obj.date+' existe déjà. Doublon interdit.','error');
+  }
   var action,params;
   if(id){obj.id=id;action='apiUpdateLivraison';params={token:S.tk,obj:obj,livraisonPassword:S._llp||null};}
   else{action='apiAddLivraison';params={token:S.tk,obj:Object.assign({station:S.cs},obj)};}
@@ -1833,6 +1886,11 @@ function saveVer(){
   var id=+($('mv-id').value||0);
   var obj={date:$('mv-dt').value,montant_verse:$('mv-mt').value,mode_versement:$('mv-md').value,reference:$('mv-rf').value,station:S.cs};
   if(!obj.montant_verse)return toast('Montant requis','error');
+  /* vérification doublon versement côté client (non-admin, nouveau versement uniquement) */
+  if(!id && !isAd()){
+    var dupVerCli=(S.vc||[]).some(function(v){return v.date===obj.date;});
+    if(dupVerCli)return toast('⚠️ Un versement à la date '+obj.date+' existe déjà. Doublon interdit.','error');
+  }
   var action,params;
   if(id){obj.id=id;action='apiUpdateVersement';params={token:S.tk,obj:obj};}
   else{action='apiAddVersement';params={token:S.tk,obj:Object.assign({station:S.cs},obj)};}
