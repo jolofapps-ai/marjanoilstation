@@ -1526,7 +1526,7 @@ function _applyDashData(r,fromCache,prevDash){
   var acBg=argentCaisse>0?'positive':argentCaisse===0?'zero':'';
   var acTxt=argentCaisse<0?'td':'ts';
   var rdBg=totalRestant<0?'':totalRestant===0?'zero':'positive';
-  var rdTxt=totalRestant<0?'td':totalRestant>0?'ts':'';
+  var rdTxt=totalRestant<0?'td':totalRestant>0?'ta':'';
   $('d-stats').innerHTML=
     '<div class="sc"><div class="si bl"><i class="fas fa-truck"></i></div><div class="sl">Livraison (total)</div><div class="sv" style="color:var(--inf)">'+fmF(totalLiv)+'</div></div>'
    +'<div class="sc"><div class="si bl"><i class="fas fa-oil-can"></i></div><div class="sl">Litres (total)</div><div class="sv" style="color:var(--inf)">'+fm(totalLitres)+' L</div></div>'
@@ -1638,7 +1638,7 @@ function rResChart(res){
 }
 function rRes(res,stockVal){
   if(!res)return;stockVal=stockVal||0;
-  var mr=res.montant_restant||0,rcClass=mr>0?'positive':mr===0?'zero':'',mc=mr<0?'td':'ts';
+  var mr=res.montant_restant||0,rcClass=mr>0?'positive':mr===0?'zero':'',mc=mr<0?'td':mr>0?'ta':'';
   /* Argent en caisse = ABS(Restant dû) − Valeur stock */
   var ac=Math.abs(mr)-stockVal,acBg=ac>0?'positive':ac===0?'zero':'',acTxt=ac<0?'td':'ts';
   $('st-res').innerHTML=
@@ -1653,7 +1653,7 @@ function rStk(stock){
   var rows=[],tL=0,tV=0,tS=0,tM=0,pxMap={};
   var px=(S.sp&&S.sp.length)?S.sp:S.pr;px.forEach(function(p){pxMap[p.produit]=p.prix_unitaire;});
   (stock||[]).forEach(function(p){var sl=p.stock_litres||0,pu=pxMap[p.produit]||0,ms=sl*pu;tL+=(p.livraisons_litres||0);tV+=(p.ventes_litres||0);tS+=sl;tM+=ms;rows.push('<tr><td class="fw6">'+escH(p.produit)+'</td><td class="tr">'+fm(p.livraisons_litres||0)+'</td><td class="tr">'+fm(p.ventes_litres||0)+'</td><td class="tr '+(sl>0?'ts':sl<0?'td':'')+'">'+fm(sl)+'</td><td class="tr fw7 ta">'+fmF(ms)+'</td></tr>');});
-  if(rows.length)rows.push('<tr style="font-weight:800;background:var(--accg);border-top:2px solid var(--accb)"><td>TOTAL</td><td class="tr">'+fm(tL)+'</td><td class="tr">'+fm(tV)+'</td><td class="tr">'+fm(tS)+'</td><td class="tr ta">'+fmF(tM)+'</td></tr>');
+  if(rows.length)rows.push('<tr style="font-weight:800;background:var(--accg);border-top:2px solid var(--accb)"><td>TOTAL</td><td class="tr">'+fm(tL)+'</td><td class="tr">'+fm(tV)+'</td><td class="tr '+(tS>0?'ts':tS<0?'td':'')+'">'+fm(tS)+'</td><td class="tr ta">'+fmF(tM)+'</td></tr>');
   $('stk-tbl').innerHTML=rows.length?rows.join(''):'<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--t3)">Aucune donnée</td></tr>';
 }
 function rVen(items){
