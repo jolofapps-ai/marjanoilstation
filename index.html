@@ -712,13 +712,32 @@ var RL = {
 var PL = ['#f59e0b','#3b82f6','#10b981','#8b5cf6','#ef4444','#06b6d4'];
 
 /* ===================== PERMISSIONS ===================== */
+var READ_ONLY_NAMES=['diop','sakho','balde','wada','fatima'];
+function isReadOnlyUser(user){
+  if(!user)return false;
+  var role=String(user.role||'').toLowerCase();
+  /* l'admin conserve TOUJOURS tous les droits */
+  if(role==='admin')return false;
+  /* restriction uniquement pour les super_gerant */
+  if(role!=='super_gerant')return false;
+  var uname=(user.username||'').toLowerCase().trim();
+  /* correspondance exacte sur username */
+  if(READ_ONLY_NAMES.indexOf(uname)>-1)return true;
+  /* correspondance exacte sur chaque mot du nom complet */
+  var words=(user.nom_complet||'').toLowerCase().trim().split(/\s+/);
+  return READ_ONLY_NAMES.some(function(x){return words.indexOf(x)>-1;});
+}
 function buildPermissions(user){
   var role=String(user.role||'').toLowerCase();
+  var ro=isReadOnlyUser(user);
+  var canAct=['admin','directeur_commercial','gerant','pompiste','super_gerant','inspecteur'].indexOf(role)>-1;
   return {
     role:role,
+    readOnly:ro,
     globalView:['admin','directeur_commercial','inspecteur','super_gerant'].indexOf(role)>-1,
-    canEdit:['admin','directeur_commercial','gerant','pompiste','super_gerant','inspecteur'].indexOf(role)>-1,
-    canDelete:['admin','directeur_commercial','inspecteur','super_gerant'].indexOf(role)>-1,
+    canCreate:canAct,
+    canEdit:ro?false:canAct,
+    canDelete:ro?false:['admin','directeur_commercial','inspecteur','super_gerant'].indexOf(role)>-1,
     canConfig:role==='admin'
   };
 }
@@ -800,6 +819,7 @@ function gv(){return S.pm&&S.pm.globalView;}
 function cd(){return S.pm&&(S.pm.canDelete||S.pm.role==='inspecteur');}
 function cc(){return S.pm&&S.pm.canConfig;}
 function ce(){return S.pm&&S.pm.canEdit;}
+function ccr(){return S.pm&&S.pm.canCreate;}
 function isAd(){return S.pm&&S.pm.role==='admin';}
 function isSG(){return S.u&&String(S.u.role||'').toLowerCase()==='super_gerant';}
 function rl(r){return RL[r]||r;}
@@ -949,8 +969,10 @@ async function sbApiGetStationFull(p){
 }
 
 /* --- Ventes CRUD --- */
+var RO_MSG='⛔ Accès refusé : votre compte est en lecture seule.';
 async function sbApiUpsertStationSale(p){
   var obj=p.obj,st=p.stationName;
+  if(obj.id&&S.pm&&S.pm.readOnly)return{ok:false,message:RO_MSG};
   var salesPwd=p.salesPassword;
   /* vérifier le mot de passe si fourni (non-admin) */
   if(salesPwd!=null){
@@ -968,6 +990,7 @@ async function sbApiUpsertStationSale(p){
   return{ok:true,message:obj.id?'Vente modifiée':'Vente enregistrée',notify:n};
 }
 async function sbApiDeleteStationSale(p){
+  if(S.pm&&S.pm.readOnly)return{ok:false,message:RO_MSG};
   var salesPwd=p.salesPassword;
   if(salesPwd!=null){
     var {data:sec}=await _sb.from('config_security').select('value').eq('key','sales_password').maybeSingle();
@@ -989,6 +1012,7 @@ async function sbApiAddLivraison(p){
   return{ok:true,message:'Livraison enregistrée',notify:n};
 }
 async function sbApiUpdateLivraison(p){
+  if(S.pm&&S.pm.readOnly)return{ok:false,message:RO_MSG};
   var obj=p.obj;
   var salesPwd=p.livraisonPassword;
   if(salesPwd!=null){
@@ -1002,6 +1026,7 @@ async function sbApiUpdateLivraison(p){
   return{ok:true,message:'Livraison modifiée'};
 }
 async function sbApiDeleteLivraison(p){
+  if(S.pm&&S.pm.readOnly)return{ok:false,message:RO_MSG};
   var salesPwd=p.livraisonPassword;
   if(salesPwd!=null){
     var {data:sec}=await _sb.from('config_security').select('value').eq('key','sales_password').maybeSingle();
@@ -1022,6 +1047,7 @@ async function sbApiAddVersement(p){
   return{ok:true,message:'Versement enregistré',notify:n};
 }
 async function sbApiUpdateVersement(p){
+  if(S.pm&&S.pm.readOnly)return{ok:false,message:RO_MSG};
   var obj=p.obj;
   var row={date:obj.date,montant_verse:parseFloat(obj.montant_verse||0),mode_versement:obj.mode_versement||'Espèce',reference:obj.reference||null};
   var res=await _sb.from('versements').update(row).eq('id',obj.id);
@@ -1029,6 +1055,7 @@ async function sbApiUpdateVersement(p){
   return{ok:true,message:'Versement modifié'};
 }
 async function sbApiDeleteVersement(p){
+  if(S.pm&&S.pm.readOnly)return{ok:false,message:RO_MSG};
   var res=await _sb.from('versements').delete().eq('id',p.id);
   if(res.error)return{ok:false,message:res.error.message};
   return{ok:true,message:'Versement supprimé'};
@@ -1044,6 +1071,7 @@ async function sbApiAddDepense(p){
   return{ok:true,message:'Dépense enregistrée',notify:n};
 }
 async function sbApiUpdateDepense(p){
+  if(S.pm&&S.pm.readOnly)return{ok:false,message:RO_MSG};
   var obj=p.obj;
   var row={date:obj.date,categorie:obj.categorie||null,description:obj.description,montant:parseFloat(obj.montant||0)};
   var res=await _sb.from('depenses').update(row).eq('id',obj.id);
@@ -1051,6 +1079,7 @@ async function sbApiUpdateDepense(p){
   return{ok:true,message:'Dépense modifiée'};
 }
 async function sbApiDeleteDepense(p){
+  if(S.pm&&S.pm.readOnly)return{ok:false,message:RO_MSG};
   var res=await _sb.from('depenses').delete().eq('id',p.id);
   if(res.error)return{ok:false,message:res.error.message};
   return{ok:true,message:'Dépense supprimée'};
@@ -1067,6 +1096,7 @@ async function sbApiAddConso(p){
   return{ok:true,message:'Relevé enregistré',notify:n};
 }
 async function sbApiUpdateConso(p){
+  if(S.pm&&S.pm.readOnly)return{ok:false,message:RO_MSG};
   var obj=p.obj;
   var jo=parseFloat(obj.jauge_ouverture||0),jf=parseFloat(obj.jauge_fermeture||0);
   var row={date:obj.date,produit:obj.produit,jauge_ouverture:jo,jauge_fermeture:jf,sortie:jo-jf,observations:obj.observations||null};
@@ -1075,6 +1105,7 @@ async function sbApiUpdateConso(p){
   return{ok:true,message:'Relevé modifié'};
 }
 async function sbApiDeleteConso(p){
+  if(S.pm&&S.pm.readOnly)return{ok:false,message:RO_MSG};
   var obj=p.obj;
   var res=await _sb.from('rapport_consommation').delete().eq('id',+(obj._rowLine||0));
   if(res.error)return{ok:false,message:res.error.message};
@@ -1543,8 +1574,8 @@ function initSt(){
   $('st-title').innerHTML='<i class="fas fa-gas-pump ta"></i> '+(S.cs||'Station');
   var snb=$('st-name-display');if(snb)snb.textContent=S.cs||'';
   var snbar=$('st-name-bar');if(snbar)snbar.style.display=S.cs?'block':'none';
-  var ab=$('add-sale-btn');if(ab)ab.style.display=ce()?'inline-flex':'none';
-  var ab2=$('btn-add-sale-ven');if(ab2)ab2.style.display=ce()?'inline-flex':'none';
+  var ab=$('add-sale-btn');if(ab)ab.style.display=ccr()?'inline-flex':'none';
+  var ab2=$('btn-add-sale-ven');if(ab2)ab2.style.display=ccr()?'inline-flex':'none';
   _sfBusy=false;loadSF();
 }
 function swSt(n){S.cs=n;_sfBusy=false;$('st-title').innerHTML='<i class="fas fa-gas-pump ta"></i> '+escH(n);var snb=$('st-name-display');if(snb)snb.textContent=n;var snbar=$('st-name-bar');if(snbar)snbar.style.display='block';$('st-tabs').querySelectorAll('.st-tab').forEach(function(t){t.classList.toggle('on',t.dataset.station===n);});loadSF();}
