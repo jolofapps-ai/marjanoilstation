@@ -940,10 +940,11 @@ async function sbApiGetStationFull(p){
   var livByPr={},venByPr={};
   livraisons.forEach(function(r){livByPr[r.produit]=(livByPr[r.produit]||0)+(r.quantite_litres||0);});
   sales.forEach(function(r){venByPr[r.produit]=(venByPr[r.produit]||0)+(r.quantite_litres||0);});
-  var stock=produits.map(function(p){var lL=livByPr[p.produit]||0,vL=venByPr[p.produit]||0;return{produit:p.produit,livraisons_litres:lL,ventes_litres:vL,stock_litres:lL-vL};}).filter(function(p){return p.livraisons_litres>0||p.ventes_litres>0;});
   /* lastReadings */
   var lastReadings={};
   (conRes.data||[]).forEach(function(r){if(!lastReadings[r.produit]||r.date>lastReadings[r.produit].date)lastReadings[r.produit]={date:r.date,jauge_fermeture:r.jauge_fermeture||0};});
+  /* Stock = Total Livraisons - Ventes */
+  var stock=produits.map(function(p){var lL=livByPr[p.produit]||0,vL=venByPr[p.produit]||0;return{produit:p.produit,livraisons_litres:lL,ventes_litres:vL,stock_litres:lL-vL};}).filter(function(p){return p.livraisons_litres>0||p.ventes_litres>0;});
   return{ok:true,sales:sales,livraisons:livraisons,versements:versements,depenses:depenses,conso:conso,stock:stock,lastReadings:lastReadings,produits:produits,stationPrix:stationPrix,categories:categories,resume:{total_livraisons:totalLiv,total_versements:totalVer,total_depenses:totalDep,total_ventes:totalVen,montant_restant:montantRestant},permissions:S.pm};
 }
 
@@ -955,8 +956,6 @@ async function sbApiUpsertStationSale(p){
   if(salesPwd!=null){
     var {data:sec}=await _sb.from('config_security').select('value').eq('key','sales_password').maybeSingle();
     if(sec&&sec.value&&sec.value!==salesPwd)return{ok:false,message:'Mot de passe incorrect'};
-  }
-  if(!obj.id && !isAd()){
   }
   var qte=parseFloat(obj.index_arrivee||0)-parseFloat(obj.index_depart||0);
   var mt=qte*parseFloat(obj.prix_unitaire||0);
@@ -1060,9 +1059,6 @@ async function sbApiDeleteDepense(p){
 /* --- Conso CRUD --- */
 async function sbApiAddConso(p){
   var obj=p.obj;
-  if(!isAd()){
-    var stCon=obj.station||S.cs;
-  }
   var jo=parseFloat(obj.jauge_ouverture||0),jf=parseFloat(obj.jauge_fermeture||0);
   var row={station:obj.station||S.cs,date:obj.date,produit:obj.produit,jauge_ouverture:jo,jauge_fermeture:jf,sortie:jo-jf,observations:obj.observations||null};
   var res=await _sb.from('rapport_consommation').insert(row);
@@ -1345,7 +1341,12 @@ function bindEvents(){
     }else{if(hint)hint.style.display='none';}
   });
   $('ml-pr').addEventListener('change',function(){var o=this.options[this.selectedIndex];if(o&&o.dataset.px)$('ml-px').value=o.dataset.px;});
+  $('ml-dt').addEventListener('change',function(){});
   $('ms-pr').addEventListener('change',function(){var o=this.options[this.selectedIndex];if(o&&o.dataset.px)$('ms-px').value=o.dataset.px;calcSale();});
+  $('ms-dt').addEventListener('change',function(){});
+  $('mv-dt').addEventListener('change',function(){});
+  $('mc-pr').addEventListener('change',function(){});
+  $('mc-dt').addEventListener('change',function(){});
   $('ms-px').addEventListener('input',calcSale);
   $('m-usr-r').addEventListener('change',function(){var isSGv=(this.value==='super_gerant');$('fg-station-single').style.display=isSGv?'none':'block';$('fg-station-multi').style.display=isSGv?'block':'none';if(isSGv)buildMultiStationGrid();});
   }catch(err){console.error('bindEvents error',err);toast('Erreur bindEvents: '+err.message,'error');}
@@ -1471,7 +1472,7 @@ function _applyDashData(r,fromCache,prevDash){
   var acBg=argentCaisse>0?'positive':argentCaisse===0?'zero':'';
   var acTxt=argentCaisse<0?'td':'ts';
   var rdBg=totalRestant<0?'':totalRestant===0?'zero':'positive';
-  var rdTxt=totalRestant<0?'td':totalRestant>0?'ts':'';
+  var rdTxt=totalRestant<0?'td':totalRestant>0?'ta':'';
   $('d-stats').innerHTML=
     '<div class="sc"><div class="si bl"><i class="fas fa-truck"></i></div><div class="sl">Livraison (total)</div><div class="sv" style="color:var(--inf)">'+fmF(totalLiv)+'</div></div>'
    +'<div class="sc"><div class="si bl"><i class="fas fa-oil-can"></i></div><div class="sl">Litres (total)</div><div class="sv" style="color:var(--inf)">'+fm(totalLitres)+' L</div></div>'
@@ -1583,7 +1584,8 @@ function rResChart(res){
 }
 function rRes(res,stockVal){
   if(!res)return;stockVal=stockVal||0;
-  var mr=res.montant_restant||0,rcClass=mr>0?'positive':mr===0?'zero':'',mc=mr<0?'td':'ts';
+  var mr=res.montant_restant||0,rcClass=mr>0?'positive':mr===0?'zero':'',mc=mr<0?'td':mr>0?'ta':'';
+  /* Argent en caisse = ABS(Restant dû) − Valeur stock */
   var ac=Math.abs(mr)-stockVal,acBg=ac>0?'positive':ac===0?'zero':'',acTxt=ac<0?'td':'ts';
   $('st-res').innerHTML=
     '<div class="sc"><div class="si bl"><i class="fas fa-truck"></i></div><div class="sl">Livraisons</div><div class="sv">'+fmF(res.total_livraisons||0)+'</div></div>'
@@ -1597,7 +1599,7 @@ function rStk(stock){
   var rows=[],tL=0,tV=0,tS=0,tM=0,pxMap={};
   var px=(S.sp&&S.sp.length)?S.sp:S.pr;px.forEach(function(p){pxMap[p.produit]=p.prix_unitaire;});
   (stock||[]).forEach(function(p){var sl=p.stock_litres||0,pu=pxMap[p.produit]||0,ms=sl*pu;tL+=(p.livraisons_litres||0);tV+=(p.ventes_litres||0);tS+=sl;tM+=ms;rows.push('<tr><td class="fw6">'+escH(p.produit)+'</td><td class="tr">'+fm(p.livraisons_litres||0)+'</td><td class="tr">'+fm(p.ventes_litres||0)+'</td><td class="tr '+(sl>0?'ts':sl<0?'td':'')+'">'+fm(sl)+'</td><td class="tr fw7 ta">'+fmF(ms)+'</td></tr>');});
-  if(rows.length)rows.push('<tr style="font-weight:800;background:var(--accg);border-top:2px solid var(--accb)"><td>TOTAL</td><td class="tr">'+fm(tL)+'</td><td class="tr">'+fm(tV)+'</td><td class="tr">'+fm(tS)+'</td><td class="tr ta">'+fmF(tM)+'</td></tr>');
+  if(rows.length)rows.push('<tr style="font-weight:800;background:var(--accg);border-top:2px solid var(--accb)"><td>TOTAL</td><td class="tr">'+fm(tL)+'</td><td class="tr">'+fm(tV)+'</td><td class="tr '+(tS>0?'ts':tS<0?'td':'')+'">'+fm(tS)+'</td><td class="tr ta">'+fmF(tM)+'</td></tr>');
   $('stk-tbl').innerHTML=rows.length?rows.join(''):'<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--t3)">Aucune donnée</td></tr>';
 }
 function rVen(items){
@@ -1781,8 +1783,6 @@ function saveSale(){
   if(ia<=0&&id2<=0)return toast('Index requis','error');
   var qte=ia-id2;
   if(qte<=0)return toast('Index d\'arrivée doit être > Index de départ','error');
-  if(!id && !isAd()){
-  }
   var obj={id:id||0,date:dt,produit:pr,prix_unitaire:px,index_arrivee:ia,index_depart:id2,quantite_litres:qte,observations:ob};
   _saving=true;var sb=$('btn-save-sale');if(sb){sb.disabled=true;sb.innerHTML='<i class="fas fa-circle-notch fa-spin"></i>';}
   api('apiUpsertStationSale',{token:S.tk,stationName:S.cs,obj:obj,salesPassword:S._lsp||null})
@@ -1863,9 +1863,6 @@ function saveCon(){
   var obj={date:$('mc-dt').value,produit:$('mc-pr').value,jauge_ouverture:$('mc-jo').value,jauge_fermeture:$('mc-jf').value,station:S.cs,observations:$('mc-ob').value,orig_date:$('mc-orig-dt').value,orig_produit:$('mc-orig-pr').value,_rowLine:+($('mc-row-line').value||0)};
   if(!obj.produit)return toast('Produit requis','error');
   if(!obj.date)return toast('Date requise','error');
-  if(!isEdit && !isAd()){
-    var conData=(S.fd&&S.fd.conso)||[];
-  }
   _saving=true;var sb=$('btn-save-con');if(sb){sb.disabled=true;sb.innerHTML='<i class="fas fa-circle-notch fa-spin"></i>';}
   api(isEdit?'apiUpdateConso':'apiAddConso',{token:S.tk,obj:obj})
     .then(function(r){if(r.ok){clM('m-con');toast(r.message||'OK','success');if(r.notify)_pushNotif(r.notify.type,r.notify.station,r.notify.detail);_sfBusy=false;loadSF();}else toast(r.message||'Erreur','error');})
