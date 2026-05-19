@@ -734,7 +734,7 @@ function buildPermissions(user){
   return {
     role:role,
     readOnly:ro,
-    globalView:['admin','directeur_commercial'].indexOf(role)>-1,
+    globalView:['admin','directeur_commercial','inspecteur','super_gerant'].indexOf(role)>-1,
     canCreate:canAct,
     canEdit:ro?false:canAct,
     canDelete:ro?false:['admin','directeur_commercial','inspecteur','super_gerant'].indexOf(role)>-1,
@@ -911,12 +911,12 @@ async function sbApiGetDashboard(p){
   livQ=_applyDateFilter(livQ,from,to);verQ=_applyDateFilter(verQ,from,to);depQ=_applyDateFilter(depQ,from,to);
   var [livRes,verRes,depRes,stRes]=await Promise.all([livQ,verQ,depQ,_sb.from('config_stations').select('nom_station').order('nom_station')]);
   var stations=(stRes.data||[]).map(function(s){return s.nom_station;});
-  /* Filtrer les stations selon le rôle : super_gérant et inspecteur ne voient que leurs stations assignées */
+  /* Filtrer : super_gerant et inspecteur ne voient QUE leurs stations assignées */
   var role=String((S.u&&S.u.role)||'').toLowerCase();
-  if(role!=='admin'&&role!=='directeur_commercial'){
-    var assigned=userStationList();
-    if(assigned.length)stations=stations.filter(function(st){return assigned.indexOf(st)>-1;});
-    else stations=[];
+  if(role==='super_gerant'||role==='inspecteur'){
+    var stationField=S.u&&S.u.station?S.u.station:'';
+    var assigned=stationField.split(',').map(function(s){return s.trim();}).filter(Boolean);
+    stations=assigned.length?stations.filter(function(st){return assigned.indexOf(st)>-1;}):[];
   }
   var livByS={},livLitByS={},verByS={},depByS={};
   (livRes.data||[]).forEach(function(r){livByS[r.station]=(livByS[r.station]||0)+(r.montant_total||0);livLitByS[r.station]=(livLitByS[r.station]||0)+(r.quantite_litres||0);});
