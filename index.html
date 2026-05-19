@@ -734,7 +734,7 @@ function buildPermissions(user){
   return {
     role:role,
     readOnly:ro,
-    globalView:['admin','directeur_commercial','inspecteur','super_gerant'].indexOf(role)>-1,
+    globalView:['admin','directeur_commercial'].indexOf(role)>-1,
     canCreate:canAct,
     canEdit:ro?false:canAct,
     canDelete:ro?false:['admin','directeur_commercial','inspecteur','super_gerant'].indexOf(role)>-1,
@@ -846,9 +846,9 @@ function swSub(el){var p=el.closest('.ps2');if(!p)return;var tabs=el.parentNode.
 function userStationList(){
   if(!S.u)return S.st;
   var r=String(S.u.role||'').toLowerCase();
-  if(r==='admin')return S.st;
+  if(r==='admin'||r==='directeur_commercial')return S.st;
   if(S.u.station){var parts=S.u.station.split(',').map(function(s){return s.trim();}).filter(Boolean);if(parts.length)return parts;}
-  return S.st;
+  return [];
 }
 function isDaha(){var u=S.u;if(!u)return false;var r=String(u.role||'').toLowerCase();if(r!=='inspecteur')return false;var n=((u.nom_complet||'')+(u.username||'')+(u.station||'')).toLowerCase();return n.indexOf('daha')>-1;}
 function reqPwd(type,data){var r=S.u?String(S.u.role||'').toLowerCase():'';if(r==='admin'||isDaha()){execPwd(type,data,null);return;}_pa={t:type,d:data};$('pw-in').value='';$('pw-err').style.display='none';opM('m-pwd');}
@@ -911,6 +911,13 @@ async function sbApiGetDashboard(p){
   livQ=_applyDateFilter(livQ,from,to);verQ=_applyDateFilter(verQ,from,to);depQ=_applyDateFilter(depQ,from,to);
   var [livRes,verRes,depRes,stRes]=await Promise.all([livQ,verQ,depQ,_sb.from('config_stations').select('nom_station').order('nom_station')]);
   var stations=(stRes.data||[]).map(function(s){return s.nom_station;});
+  /* Filtrer les stations selon le rôle : super_gérant et inspecteur ne voient que leurs stations assignées */
+  var role=String((S.u&&S.u.role)||'').toLowerCase();
+  if(role!=='admin'&&role!=='directeur_commercial'){
+    var assigned=userStationList();
+    if(assigned.length)stations=stations.filter(function(st){return assigned.indexOf(st)>-1;});
+    else stations=[];
+  }
   var livByS={},livLitByS={},verByS={},depByS={};
   (livRes.data||[]).forEach(function(r){livByS[r.station]=(livByS[r.station]||0)+(r.montant_total||0);livLitByS[r.station]=(livLitByS[r.station]||0)+(r.quantite_litres||0);});
   (verRes.data||[]).forEach(function(r){verByS[r.station]=(verByS[r.station]||0)+(r.montant_verse||0);});
@@ -1379,7 +1386,7 @@ function bindEvents(){
   $('mc-pr').addEventListener('change',function(){});
   $('mc-dt').addEventListener('change',function(){});
   $('ms-px').addEventListener('input',calcSale);
-  $('m-usr-r').addEventListener('change',function(){var isSGv=(this.value==='super_gerant');$('fg-station-single').style.display=isSGv?'none':'block';$('fg-station-multi').style.display=isSGv?'block':'none';if(isSGv)buildMultiStationGrid();});
+  $('m-usr-r').addEventListener('change',function(){var isSGv=(this.value==='super_gerant'||this.value==='inspecteur');$('fg-station-single').style.display=isSGv?'none':'block';$('fg-station-multi').style.display=isSGv?'block':'none';if(isSGv)buildMultiStationGrid();});
   }catch(err){console.error('bindEvents error',err);toast('Erreur bindEvents: '+err.message,'error');}
 }
 function calcSale(){
@@ -2027,7 +2034,7 @@ function openUserM(u){
   $('m-usr-u').value=u?u.username:'';$('m-usr-u').readOnly=!!u;
   $('m-usr-pw').value='';$('m-usr-n').value=u?u.nom_complet:'';$('m-usr-t2').value=u?u.telephone:'';
   $('m-usr-r').value=u?u.role:'gerant';
-  var isSGv=(u&&u.role==='super_gerant');
+  var isSGv=(u&&(u.role==='super_gerant'||u.role==='inspecteur'));
   $('fg-station-single').style.display=isSGv?'none':'block';$('fg-station-multi').style.display=isSGv?'block':'none';
   if(isSGv){buildMultiStationGrid(u?u.station:'');}
   else{$('m-usr-s').value=u?u.station:'';}
@@ -2042,7 +2049,7 @@ function editUsr(username){
 }
 function saveUsr(){
   var u={username:$('m-usr-u').value.trim(),password:$('m-usr-pw').value,nom_complet:$('m-usr-n').value.trim(),telephone:$('m-usr-t2').value.trim(),role:$('m-usr-r').value};
-  var isSGv=(u.role==='super_gerant');
+  var isSGv=(u.role==='super_gerant'||u.role==='inspecteur');
   if(isSGv){var checked=document.querySelectorAll('#m-usr-sm input:checked');var stations=[];checked.forEach(function(cb){stations.push(cb.value);});u.station=stations.join(',');}
   else{u.station=$('m-usr-s').value;}
   if(!u.username)return toast('Identifiant requis','error');
